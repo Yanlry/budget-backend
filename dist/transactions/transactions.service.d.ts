@@ -1,0 +1,132 @@
+import { AccountsService } from '../accounts/accounts.service';
+import { CategoriesService } from '../categories/categories.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto';
+import { UpdateTransactionDto } from './dto/update-transaction.dto';
+export declare class TransactionsService {
+    private readonly prisma;
+    private readonly categoriesService;
+    private readonly accountsService;
+    constructor(prisma: PrismaService, categoriesService: CategoriesService, accountsService: AccountsService);
+    findAllForUser(userId: string, query: GetTransactionsQueryDto): Promise<{
+        amount: number;
+        category: {
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            type: import("@prisma/client").$Enums.TransactionType | null;
+            color: string | null;
+            icon: string | null;
+        } | null;
+        account: {
+            currentBalance: number;
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            type: import("@prisma/client").$Enums.AccountType;
+            color: string | null;
+            icon: string | null;
+        } | null;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.TransactionType;
+        accountId: string | null;
+        title: string;
+        frequency: import("@prisma/client").$Enums.Frequency;
+        recurrenceIntervalDays: number | null;
+        date: Date;
+        endDate: Date | null;
+        categoryId: string | null;
+        note: string | null;
+    }[]>;
+    createForUser(userId: string, dto: CreateTransactionDto): Promise<{
+        amount: number;
+        category: {
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            type: import("@prisma/client").$Enums.TransactionType | null;
+            color: string | null;
+            icon: string | null;
+        } | null;
+        account: {
+            currentBalance: number;
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            type: import("@prisma/client").$Enums.AccountType;
+            color: string | null;
+            icon: string | null;
+        } | null;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.TransactionType;
+        accountId: string | null;
+        title: string;
+        frequency: import("@prisma/client").$Enums.Frequency;
+        recurrenceIntervalDays: number | null;
+        date: Date;
+        endDate: Date | null;
+        categoryId: string | null;
+        note: string | null;
+    }>;
+    updateForUser(userId: string, transactionId: string, dto: UpdateTransactionDto): Promise<{
+        amount: number;
+        category: {
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            type: import("@prisma/client").$Enums.TransactionType | null;
+            color: string | null;
+            icon: string | null;
+        } | null;
+        account: {
+            currentBalance: number;
+            name: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            userId: string;
+            type: import("@prisma/client").$Enums.AccountType;
+            color: string | null;
+            icon: string | null;
+        } | null;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        userId: string;
+        type: import("@prisma/client").$Enums.TransactionType;
+        accountId: string | null;
+        title: string;
+        frequency: import("@prisma/client").$Enums.Frequency;
+        recurrenceIntervalDays: number | null;
+        date: Date;
+        endDate: Date | null;
+        categoryId: string | null;
+        note: string | null;
+    }>;
+    deleteForUser(userId: string, transactionId: string): Promise<{
+        success: boolean;
+    }>;
+    private ensureCategoryOwnership;
+    private ensureAccountOwnership;
+    private computeCurrentBalanceImpact;
+    private shouldAffectCurrentBalance;
+    private normalizeRecurrenceIntervalDays;
+    private updateCurrentBalanceFromTransactionDelta;
+}
