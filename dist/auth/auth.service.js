@@ -44,22 +44,28 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const jwt_1 = require("@nestjs/jwt");
 const bcrypt = __importStar(require("bcryptjs"));
+const jose_1 = require("jose");
 const accounts_service_1 = require("../accounts/accounts.service");
 const serializers_1 = require("../common/types/serializers");
 const categories_service_1 = require("../categories/categories.service");
 const users_service_1 = require("../users/users.service");
+const APPLE_ISSUER = 'https://appleid.apple.com';
+const APPLE_JWKS = (0, jose_1.createRemoteJWKSet)(new URL('https://appleid.apple.com/auth/keys'));
 let AuthService = class AuthService {
     usersService;
     categoriesService;
     accountsService;
     jwtService;
-    constructor(usersService, categoriesService, accountsService, jwtService) {
+    configService;
+    constructor(usersService, categoriesService, accountsService, jwtService, configService) {
         this.usersService = usersService;
         this.categoriesService = categoriesService;
         this.accountsService = accountsService;
         this.jwtService = jwtService;
+        this.configService = configService;
     }
     async register(dto) {
         const existing = await this.usersService.findByEmail(dto.email);
@@ -95,12 +101,60 @@ let AuthService = class AuthService {
             user: (0, serializers_1.serializeUser)(user),
         };
     }
+    async loginWithApple(dto) {
+        const appleTokenPayload = await this.verifyAppleIdentityToken(dto.identityToken);
+        const appleUserId = appleTokenPayload.sub;
+        let user = await this.usersService.findByAppleUserId(appleUserId);
+        const tokenEmail = typeof appleTokenPayload.email === 'string'
+            ? appleTokenPayload.email.trim().toLowerCase()
+            : undefined;
+        const fallbackEmail = dto.email?.trim().toLowerCase();
+        const candidateEmail = tokenEmail || fallbackEmail;
+        if (!user && candidateEmail) {
+            const existingByEmail = await this.usersService.findByEmail(candidateEmail);
+            if (existingByEmail) {
+                if (existingByEmail.appleUserId &&
+                    existingByEmail.appleUserId !== appleUserId) {
+                    throw new common_1.ConflictException('Ce compte est deja lie a un autre identifiant Apple.');
+                }
+                user = await this.usersService.updateById(existingByEmail.id, {
+                    appleUserId,
+                });
+            }
+        }
+        if (!user) {
+            const syntheticEmail = `apple_${appleUserId}@relay.wallety.local`;
+            const generatedPasswordHash = await bcrypt.hash(`apple:${appleUserId}:${Date.now()}`, 10);
+            user = await this.usersService.create({
+                email: candidateEmail || syntheticEmail,
+                passwordHash: generatedPasswordHash,
+                name: dto.fullName,
+                appleUserId,
+            });
+            await this.accountsService.ensureDefaultAccount(user.id, Number(user.currentBalance));
+            await this.categoriesService.createDefaultCategoriesForUser(user.id);
+        }
+        return {
+            accessToken: await this.signToken(user.id, user.email),
+            user: (0, serializers_1.serializeUser)(user),
+        };
+    }
     async me(userId) {
         const user = await this.usersService.findById(userId);
         if (!user) {
             throw new common_1.UnauthorizedException('Utilisateur introuvable.');
         }
         return (0, serializers_1.serializeUser)(user);
+    }
+    async exportData(userId) {
+        const data = await this.usersService.exportDataById(userId);
+        if (!data) {
+            throw new common_1.UnauthorizedException('Utilisateur introuvable.');
+        }
+        return {
+            generatedAt: new Date().toISOString(),
+            data,
+        };
     }
     async updateMe(userId, dto) {
         await this.usersService.updateById(userId, {
@@ -133,6 +187,46 @@ let AuthService = class AuthService {
         await this.usersService.updatePasswordHashById(userId, nextPasswordHash);
         return { success: true };
     }
+    async registerPushToken(userId, dto) {
+        const user = await this.usersService.findById(userId);
+        if (!user) {
+            throw new common_1.UnauthorizedException('Utilisateur introuvable.');
+        }
+        await this.usersService.setPushTokenById(userId, dto.token);
+        return { success: true };
+    }
+    async deleteAccount(userId) {
+        const user = await this.usersService.findById(userId);
+        if (!user) {
+            throw new common_1.UnauthorizedException('Utilisateur introuvable.');
+        }
+        await this.usersService.deleteById(userId);
+        return { success: true };
+    }
+    async verifyAppleIdentityToken(identityToken) {
+        const clientIdsRaw = this.configService.get('APPLE_CLIENT_IDS') ||
+            this.configService.get('APPLE_CLIENT_ID');
+        const audiences = (clientIdsRaw ?? '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+        if (!audiences.length) {
+            throw new common_1.UnauthorizedException('Connexion Apple indisponible: APPLE_CLIENT_ID(S) manquant.');
+        }
+        try {
+            const { payload } = await (0, jose_1.jwtVerify)(identityToken, APPLE_JWKS, {
+                issuer: APPLE_ISSUER,
+                audience: audiences.length === 1 ? audiences[0] : audiences,
+            });
+            if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
+                throw new common_1.UnauthorizedException('Identifiant Apple invalide.');
+            }
+            return payload;
+        }
+        catch (_error) {
+            throw new common_1.UnauthorizedException('Token Apple invalide.');
+        }
+    }
     signToken(userId, email) {
         return this.jwtService.signAsync({
             sub: userId,
@@ -146,6 +240,7 @@ exports.AuthService = AuthService = __decorate([
     __metadata("design:paramtypes", [users_service_1.UsersService,
         categories_service_1.CategoriesService,
         accounts_service_1.AccountsService,
-        jwt_1.JwtService])
+        jwt_1.JwtService,
+        config_1.ConfigService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

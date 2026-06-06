@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Frequency, Prisma } from '@prisma/client';
@@ -12,8 +13,17 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 
+const EXPO_PUSH_API_URL = 'https://exp.host/--/api/v2/push/send';
+const RECURRING_APPLY_SOURCE = 'RECURRING_APPLY';
+const EURO_FORMATTER = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+});
+
 @Injectable()
 export class TransactionsService {
+  private readonly logger = new Logger(TransactionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
@@ -63,10 +73,44 @@ export class TransactionsService {
     }
 
     if (query.includeFutureOnly) {
-      dateFilter.gte = new Date();
-    }
+      const now = new Date();
+      const startOfToday = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        0,
+        0,
+        0,
+        0,
+      );
+      const futureDateFilter: Prisma.DateTimeFilter = {
+        ...dateFilter,
+        gte:
+          dateFilter.gte && dateFilter.gte > startOfToday
+            ? dateFilter.gte
+            : startOfToday,
+      };
 
-    if (Object.keys(dateFilter).length > 0) {
+      const recurringFilters: Prisma.TransactionWhereInput[] = [
+        { frequency: { not: Frequency.ONCE } },
+        {
+          OR: [{ endDate: null }, { endDate: { gte: startOfToday } }],
+        },
+      ];
+
+      if (futureDateFilter.lte) {
+        recurringFilters.push({
+          date: { lte: futureDateFilter.lte },
+        });
+      }
+
+      where.OR = [
+        { date: futureDateFilter },
+        {
+          AND: recurringFilters,
+        },
+      ];
+    } else if (Object.keys(dateFilter).length > 0) {
       where.date = dateFilter;
     }
 
@@ -138,6 +182,18 @@ export class TransactionsService {
         toMoney(transaction.amount),
       ),
     );
+
+    if (
+      dto.source === RECURRING_APPLY_SOURCE &&
+      transaction.frequency === Frequency.ONCE
+    ) {
+      await this.sendRecurringAppliedNotification(userId, {
+        transactionId: transaction.id,
+        title: transaction.title,
+        type: transaction.type,
+        amount: toMoney(transaction.amount),
+      });
+    }
 
     return serializeTransaction(transaction);
   }
@@ -366,5 +422,101 @@ export class TransactionsService {
     }
 
     await this.prisma.$transaction(operations);
+  }
+
+  private async sendRecurringAppliedNotification(
+    userId: string,
+    input: {
+      transactionId: string;
+      title: string;
+      type: 'INCOME' | 'EXPENSE';
+      amount: number;
+    },
+  ) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          pushToken: true,
+          currentBalance: true,
+        },
+      });
+
+      if (!user?.pushToken) {
+        return;
+      }
+
+      if (
+        !user.pushToken.startsWith('ExponentPushToken[') &&
+        !user.pushToken.startsWith('ExpoPushToken[')
+      ) {
+        return;
+      }
+
+      const amountLabel = EURO_FORMATTER.format(input.amount);
+      const balanceLabel = EURO_FORMATTER.format(toMoney(user.currentBalance));
+      const body =
+        input.type === 'EXPENSE'
+          ? `${input.title} vient d'etre debite (${amountLabel}). Ton solde est maintenant de ${balanceLabel}.`
+          : `${input.title} vient d'etre credite (${amountLabel}). Ton solde est maintenant de ${balanceLabel}.`;
+
+      const response = await fetch(EXPO_PUSH_API_URL, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: user.pushToken,
+          sound: 'default',
+          title:
+            input.type === 'EXPENSE' ? 'Depense recurrente ajoutee' : 'Revenu recurrent ajoute',
+          body,
+          data: {
+            transactionId: input.transactionId,
+            type: input.type,
+            amount: input.amount,
+            currentBalance: toMoney(user.currentBalance),
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(
+          `Push Expo refusee (${response.status}) pour l'utilisateur ${userId}.`,
+        );
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        data?: {
+          status?: 'ok' | 'error';
+          details?: {
+            error?: string;
+          };
+          message?: string;
+        };
+      };
+
+      if (payload.data?.status === 'error') {
+        if (payload.data?.details?.error === 'DeviceNotRegistered') {
+          await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+              pushToken: null,
+            },
+          });
+        }
+
+        this.logger.warn(
+          `Push Expo en erreur pour l'utilisateur ${userId}: ${payload.data?.message ?? 'inconnue'}.`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Echec envoi notification push pour l'utilisateur ${userId}: ${(error as Error).message}`,
+      );
+    }
   }
 }

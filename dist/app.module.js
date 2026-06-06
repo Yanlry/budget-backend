@@ -12,6 +12,7 @@ const core_1 = require("@nestjs/core");
 const config_1 = require("@nestjs/config");
 const accounts_module_1 = require("./accounts/accounts.module");
 const auth_module_1 = require("./auth/auth.module");
+const banking_module_1 = require("./banking/banking.module");
 const categories_module_1 = require("./categories/categories.module");
 const jwt_auth_guard_1 = require("./common/guards/jwt-auth.guard");
 const expenses_module_1 = require("./expenses/expenses.module");
@@ -31,6 +32,7 @@ exports.AppModule = AppModule = __decorate([
             prisma_module_1.PrismaModule,
             accounts_module_1.AccountsModule,
             auth_module_1.AuthModule,
+            banking_module_1.BankingModule,
             users_module_1.UsersModule,
             expenses_module_1.ExpensesModule,
             categories_module_1.CategoriesModule,

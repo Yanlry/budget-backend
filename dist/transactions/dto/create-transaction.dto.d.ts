@@ -10,4 +10,5 @@ export declare class CreateTransactionDto {
     categoryId?: string;
     accountId?: string;
     note?: string;
+    source?: string;
 }

@@ -3,16 +3,30 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { createRemoteJWKSet, JWTPayload, jwtVerify } from 'jose';
 import { AccountsService } from '../accounts/accounts.service';
 import { serializeUser } from '../common/types/serializers';
 import { CategoriesService } from '../categories/categories.service';
 import { UsersService } from '../users/users.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { LoginAppleDto } from './dto/login-apple.dto';
 import { LoginDto } from './dto/login.dto';
+import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+
+const APPLE_ISSUER = 'https://appleid.apple.com';
+const APPLE_JWKS = createRemoteJWKSet(
+  new URL('https://appleid.apple.com/auth/keys'),
+);
+
+interface AppleIdentityTokenPayload extends JWTPayload {
+  sub: string;
+  email?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -21,6 +35,7 @@ export class AuthService {
     private readonly categoriesService: CategoriesService,
     private readonly accountsService: AccountsService,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -74,6 +89,65 @@ export class AuthService {
     };
   }
 
+  async loginWithApple(dto: LoginAppleDto) {
+    const appleTokenPayload = await this.verifyAppleIdentityToken(
+      dto.identityToken,
+    );
+    const appleUserId = appleTokenPayload.sub;
+
+    let user = await this.usersService.findByAppleUserId(appleUserId);
+    const tokenEmail =
+      typeof appleTokenPayload.email === 'string'
+        ? appleTokenPayload.email.trim().toLowerCase()
+        : undefined;
+    const fallbackEmail = dto.email?.trim().toLowerCase();
+    const candidateEmail = tokenEmail || fallbackEmail;
+
+    if (!user && candidateEmail) {
+      const existingByEmail = await this.usersService.findByEmail(candidateEmail);
+      if (existingByEmail) {
+        if (
+          existingByEmail.appleUserId &&
+          existingByEmail.appleUserId !== appleUserId
+        ) {
+          throw new ConflictException(
+            'Ce compte est deja lie a un autre identifiant Apple.',
+          );
+        }
+
+        user = await this.usersService.updateById(existingByEmail.id, {
+          appleUserId,
+        });
+      }
+    }
+
+    if (!user) {
+      const syntheticEmail = `apple_${appleUserId}@relay.wallety.local`;
+      const generatedPasswordHash = await bcrypt.hash(
+        `apple:${appleUserId}:${Date.now()}`,
+        10,
+      );
+
+      user = await this.usersService.create({
+        email: candidateEmail || syntheticEmail,
+        passwordHash: generatedPasswordHash,
+        name: dto.fullName,
+        appleUserId,
+      });
+
+      await this.accountsService.ensureDefaultAccount(
+        user.id,
+        Number(user.currentBalance),
+      );
+      await this.categoriesService.createDefaultCategoriesForUser(user.id);
+    }
+
+    return {
+      accessToken: await this.signToken(user.id, user.email),
+      user: serializeUser(user),
+    };
+  }
+
   async me(userId: string) {
     const user = await this.usersService.findById(userId);
 
@@ -82,6 +156,19 @@ export class AuthService {
     }
 
     return serializeUser(user);
+  }
+
+  async exportData(userId: string) {
+    const data = await this.usersService.exportDataById(userId);
+
+    if (!data) {
+      throw new UnauthorizedException('Utilisateur introuvable.');
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      data,
+    };
   }
 
   async updateMe(userId: string, dto: UpdateMeDto) {
@@ -137,6 +224,60 @@ export class AuthService {
     await this.usersService.updatePasswordHashById(userId, nextPasswordHash);
 
     return { success: true };
+  }
+
+  async registerPushToken(userId: string, dto: RegisterPushTokenDto) {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable.');
+    }
+
+    await this.usersService.setPushTokenById(userId, dto.token);
+    return { success: true };
+  }
+
+  async deleteAccount(userId: string) {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable.');
+    }
+
+    await this.usersService.deleteById(userId);
+    return { success: true };
+  }
+
+  private async verifyAppleIdentityToken(identityToken: string) {
+    const clientIdsRaw =
+      this.configService.get<string>('APPLE_CLIENT_IDS') ||
+      this.configService.get<string>('APPLE_CLIENT_ID');
+
+    const audiences = (clientIdsRaw ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (!audiences.length) {
+      throw new UnauthorizedException(
+        'Connexion Apple indisponible: APPLE_CLIENT_ID(S) manquant.',
+      );
+    }
+
+    try {
+      const { payload } = await jwtVerify(identityToken, APPLE_JWKS, {
+        issuer: APPLE_ISSUER,
+        audience: audiences.length === 1 ? audiences[0] : audiences,
+      });
+
+      if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
+        throw new UnauthorizedException('Identifiant Apple invalide.');
+      }
+
+      return payload as AppleIdentityTokenPayload;
+    } catch (_error) {
+      throw new UnauthorizedException('Token Apple invalide.');
+    }
   }
 
   private signToken(userId: string, email: string) {

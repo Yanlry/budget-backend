@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "BankImportedTransaction_bankConnectionId_providerTransactionId_" RENAME TO "BankImportedTransaction_bankConnectionId_providerTransactio_key";

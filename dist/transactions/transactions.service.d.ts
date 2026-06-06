@@ -8,6 +8,7 @@ export declare class TransactionsService {
     private readonly prisma;
     private readonly categoriesService;
     private readonly accountsService;
+    private readonly logger;
     constructor(prisma: PrismaService, categoriesService: CategoriesService, accountsService: AccountsService);
     findAllForUser(userId: string, query: GetTransactionsQueryDto): Promise<{
         amount: number;
@@ -129,4 +130,5 @@ export declare class TransactionsService {
     private shouldAffectCurrentBalance;
     private normalizeRecurrenceIntervalDays;
     private updateCurrentBalanceFromTransactionDelta;
+    private sendRecurringAppliedNotification;
 }

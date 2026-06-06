@@ -54,4 +54,9 @@ export class CreateTransactionDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  source?: string;
 }

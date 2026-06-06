@@ -24,6 +24,7 @@ class CreateTransactionDto {
     categoryId;
     accountId;
     note;
+    source;
 }
 exports.CreateTransactionDto = CreateTransactionDto;
 __decorate([
@@ -78,4 +79,10 @@ __decorate([
     (0, class_validator_1.MaxLength)(500),
     __metadata("design:type", String)
 ], CreateTransactionDto.prototype, "note", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(32),
+    __metadata("design:type", String)
+], CreateTransactionDto.prototype, "source", void 0);
 //# sourceMappingURL=create-transaction.dto.js.map
