@@ -1,2 +1,2 @@
--- RenameIndex
-ALTER INDEX "BankImportedTransaction_bankConnectionId_providerTransactionId_" RENAME TO "BankImportedTransaction_bankConnectionId_providerTransactio_key";
+-- This migration is intentionally empty.
+-- Banking tables and indexes are created in 20260521120000_add_banking_sync.
