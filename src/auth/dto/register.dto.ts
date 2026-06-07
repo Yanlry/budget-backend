@@ -26,7 +26,6 @@ export class RegisterDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
   currentBalance?: number;
 
   @IsOptional()

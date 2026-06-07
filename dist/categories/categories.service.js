@@ -19,6 +19,7 @@ let CategoriesService = class CategoriesService {
         this.prisma = prisma;
     }
     async findAllForUser(userId) {
+        await this.createDefaultCategoriesForUser(userId);
         return this.prisma.category.findMany({
             where: { userId },
             orderBy: { name: 'asc' },

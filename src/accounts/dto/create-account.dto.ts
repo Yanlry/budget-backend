@@ -4,7 +4,6 @@ import {
   IsString,
   Matches,
   MaxLength,
-  Min,
 } from 'class-validator';
 
 export class CreateAccountDto {
@@ -26,6 +25,5 @@ export class CreateAccountDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
   currentBalance?: number;
 }

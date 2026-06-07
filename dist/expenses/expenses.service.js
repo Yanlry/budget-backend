@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ExpensesService = void 0;
 const common_1 = require("@nestjs/common");
+const default_categories_1 = require("../common/types/default-categories");
 const recurring_expense_catalog_1 = require("./recurring-expense.catalog");
 const recurring_income_catalog_1 = require("./recurring-income.catalog");
 let ExpensesService = class ExpensesService {
@@ -43,11 +44,17 @@ let ExpensesService = class ExpensesService {
                 if (score <= 0) {
                     return;
                 }
+                const categoryPreset = entry.category
+                    ? default_categories_1.SUGGESTION_CATEGORY_BY_KEY[entry.category]
+                    : undefined;
                 scored.push({
                     id: entry.id,
                     label: entry.label,
                     type: entry.type,
                     category: entry.category,
+                    categoryName: categoryPreset?.name,
+                    categoryColor: categoryPreset?.color,
+                    categoryIcon: categoryPreset?.icon,
                     score,
                 });
             });

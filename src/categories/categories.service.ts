@@ -8,6 +8,8 @@ export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAllForUser(userId: string) {
+    await this.createDefaultCategoriesForUser(userId);
+
     return this.prisma.category.findMany({
       where: { userId },
       orderBy: { name: 'asc' },

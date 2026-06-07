@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SUGGESTION_CATEGORY_BY_KEY } from '../common/types/default-categories';
 import { recurringExpenseCatalog } from './recurring-expense.catalog';
 import { recurringIncomeCatalog } from './recurring-income.catalog';
 
@@ -17,6 +18,9 @@ export type LabelSuggestion = {
   label: string;
   type: SuggestionType;
   category?: string;
+  categoryName?: string;
+  categoryColor?: string;
+  categoryIcon?: string;
   score: number;
 };
 
@@ -69,11 +73,18 @@ export class ExpensesService {
           return;
         }
 
+        const categoryPreset = entry.category
+          ? SUGGESTION_CATEGORY_BY_KEY[entry.category]
+          : undefined;
+
         scored.push({
           id: entry.id,
           label: entry.label,
           type: entry.type,
           category: entry.category,
+          categoryName: categoryPreset?.name,
+          categoryColor: categoryPreset?.color,
+          categoryIcon: categoryPreset?.icon,
           score,
         });
       });

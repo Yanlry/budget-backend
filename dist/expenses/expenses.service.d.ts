@@ -4,6 +4,9 @@ export type LabelSuggestion = {
     label: string;
     type: SuggestionType;
     category?: string;
+    categoryName?: string;
+    categoryColor?: string;
+    categoryIcon?: string;
     score: number;
 };
 export declare class ExpensesService {
